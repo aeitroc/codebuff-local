@@ -44,6 +44,10 @@ const yieldToEventLoop = () =>
     setTimeout(resolve, 0)
   })
 
+const IDLE_WATCHDOG_MS = 120000
+const IDLE_WATCHDOG_POLL_MS = 1000
+const MAX_IDLE_RETRIES = 1
+
 interface UseSendMessageOptions {
   inputRef: React.MutableRefObject<any>
   activeSubagentsRef: React.MutableRefObject<Set<string>>
@@ -225,16 +229,35 @@ export const useSendMessage = ({
   )
 
   const sendMessage = useCallback<SendMessageFn>(
-    async ({ content, agentMode, postUserMessage, images: attachedImages }) => {
+    async ({
+      content,
+      agentMode,
+      agentIdOverride,
+      postUserMessage,
+      images: attachedImages,
+      onComplete,
+    }) => {
       if (agentMode !== 'PLAN') {
         setHasReceivedPlanResponse(false)
+      }
+
+      const effectiveAgentId = agentIdOverride ?? agentId
+      let completionReported = false
+      const reportOutcome = (outcome: {
+        status: 'success' | 'failed' | 'cancelled'
+        runState?: RunState
+        errorMessage?: string
+      }) => {
+        if (completionReported) return
+        completionReported = true
+        onComplete?.(outcome)
       }
 
       // Initialize timer for elapsed time tracking
       const timerController = createSendMessageTimerController({
         mainAgentTimer,
         onTimerEvent,
-        agentId,
+        agentId: effectiveAgentId,
       })
       setIsRetrying(false)
 
@@ -274,6 +297,7 @@ export const useSendMessage = ({
               }
             }),
           )
+          reportOutcome({ status: 'failed' })
           return
         }
       } catch (error) {
@@ -291,6 +315,10 @@ export const useSendMessage = ({
         await yieldToEventLoop()
         setTimeout(() => scrollToLatest(), 0)
 
+        reportOutcome({
+          status: 'failed',
+          errorMessage: error instanceof Error ? error.message : String(error),
+        })
         return
       }
 
@@ -307,6 +335,10 @@ export const useSendMessage = ({
           {},
           'No Codebuff client available. Please ensure you are authenticated.',
         )
+        reportOutcome({
+          status: 'failed',
+          errorMessage: 'No Codebuff client available',
+        })
         return
       }
 
@@ -315,114 +347,179 @@ export const useSendMessage = ({
       const aiMessage = createAiMessageShell(aiMessageId)
 
       setMessages((prev) => autoCollapsePreviousMessages(prev, aiMessageId))
-
-      const { updater, hasReceivedContentRef, abortController } =
-        setupStreamingContext({
-          aiMessageId,
-          timerController,
-          setMessages,
-          streamRefs,
-          abortControllerRef,
-          setStreamStatus,
-          setCanProcessQueue,
-          isQueuePausedRef,
-          updateChainInProgress,
-          setIsRetrying,
-        })
-      setStreamStatus('waiting')
       setMessages((prev) => [...prev, aiMessage])
-      setCanProcessQueue(false)
-      updateChainInProgress(true)
       let actualCredits: number | undefined
+      let finalRunState: RunState | undefined
+      let finalStatus: 'success' | 'failed' | 'cancelled' | undefined
+      let finalErrorMessage: string | undefined
+      let idleRetryCount = 0
 
-      // Execute SDK run with streaming handlers
-      try {
-        const agentDefinitions = loadAgentDefinitions()
-        const resolvedAgent = resolveAgent(agentMode, agentId, agentDefinitions)
+      const agentDefinitions = loadAgentDefinitions()
+      const resolvedAgent = resolveAgent(
+        agentMode,
+        effectiveAgentId,
+        agentDefinitions,
+      )
 
-        const promptWithBashContext = bashContextForPrompt
-          ? bashContextForPrompt + content
-          : content
-        const effectivePrompt = buildPromptWithContext(
-          promptWithBashContext,
-          messageContent,
-        )
+      const promptWithBashContext = bashContextForPrompt
+        ? bashContextForPrompt + content
+        : content
+      const effectivePrompt = buildPromptWithContext(
+        promptWithBashContext,
+        messageContent,
+      )
 
-        const eventHandlerState = createEventHandlerState({
-          streamRefs,
-          setStreamingAgents,
-          setStreamStatus,
-          aiMessageId,
-          updater,
-          hasReceivedContentRef,
-          addActiveSubagent,
-          removeActiveSubagent,
-          agentMode,
-          setHasReceivedPlanResponse,
-          logger,
-          setIsRetrying,
-          onTotalCost: (cost: number) => {
-            actualCredits = cost
-            addSessionCredits(cost)
-          },
+      while (true) {
+        actualCredits = undefined
+        const { updater, hasReceivedContentRef, abortController } =
+          setupStreamingContext({
+            aiMessageId,
+            timerController,
+            setMessages,
+            streamRefs,
+            abortControllerRef,
+            setStreamStatus,
+            setCanProcessQueue,
+            isQueuePausedRef,
+            updateChainInProgress,
+            setIsRetrying,
+          })
+        setStreamStatus('waiting')
+        setCanProcessQueue(false)
+        updateChainInProgress(true)
+        setIsRetrying(idleRetryCount > 0)
+
+        const watchdogId = setInterval(() => {
+          const lastEventAt = streamRefs.state.lastEventAt
+          if (!lastEventAt) return
+          if (streamRefs.state.wasAbortedByUser) return
+          if (streamRefs.state.wasAbortedByWatchdog) return
+          const idleMs = Date.now() - lastEventAt
+          if (idleMs < IDLE_WATCHDOG_MS) return
+
+          logger.warn(
+            {
+              idleMs,
+              aiMessageId,
+              retryCount: idleRetryCount,
+            },
+            'Run idle watchdog triggered; aborting to retry',
+          )
+          streamRefs.setters.setWasAbortedByWatchdog(true)
+          abortController.abort()
+        }, IDLE_WATCHDOG_POLL_MS)
+
+        try {
+          const eventHandlerState = createEventHandlerState({
+            streamRefs,
+            setStreamingAgents,
+            setStreamStatus,
+            aiMessageId,
+            updater,
+            hasReceivedContentRef,
+            addActiveSubagent,
+            removeActiveSubagent,
+            agentMode,
+            setHasReceivedPlanResponse,
+            logger,
+            setIsRetrying,
+            onTotalCost: (cost: number) => {
+              actualCredits = cost
+              addSessionCredits(cost)
+            },
+          })
+
+          const runConfig = createRunConfig({
+            logger,
+            agent: resolvedAgent,
+            prompt: effectivePrompt,
+            content: messageContent,
+            previousRunState: previousRunStateRef.current,
+            abortController,
+            agentDefinitions,
+            eventHandlerState,
+            setIsRetrying,
+            setStreamStatus,
+          })
+
+          const runState = await client.run(runConfig)
+
+          previousRunStateRef.current = runState
+          setRunState(runState)
+          setIsRetrying(false)
+          finalRunState = runState
+
+          setMessages((currentMessages) => {
+            saveChatState(runState, currentMessages)
+            return currentMessages
+          })
+          const output = runState.output
+          const isRunError = output?.type === 'error'
+
+          handleRunCompletion({
+            runState,
+            actualCredits,
+            agentMode,
+            timerController,
+            updater,
+            aiMessageId,
+            streamRefs,
+            setStreamStatus,
+            setCanProcessQueue,
+            updateChainInProgress,
+            setHasReceivedPlanResponse,
+            resumeQueue,
+            queryClient,
+          })
+
+          if (isRunError) {
+            finalStatus = 'failed'
+            finalErrorMessage =
+              typeof output?.message === 'string' ? output.message : undefined
+          } else {
+            finalStatus = 'success'
+          }
+          break
+        } catch (error) {
+          const wasWatchdogAbort = streamRefs.state.wasAbortedByWatchdog
+          if (wasWatchdogAbort && idleRetryCount < MAX_IDLE_RETRIES) {
+            idleRetryCount += 1
+            setIsRetrying(true)
+            continue
+          }
+
+          if (streamRefs.state.wasAbortedByUser) {
+            finalStatus = 'cancelled'
+          } else {
+            finalStatus = 'failed'
+            finalErrorMessage =
+              error instanceof Error ? error.message : String(error)
+          }
+
+          handleRunError({
+            error,
+            aiMessageId,
+            timerController,
+            updater,
+            setIsRetrying,
+            setStreamStatus,
+            setCanProcessQueue,
+            updateChainInProgress,
+            queryClient,
+          })
+          break
+        } finally {
+          clearInterval(watchdogId)
+          updater.dispose()
+        }
+      }
+
+      if (finalStatus) {
+        reportOutcome({
+          status: finalStatus,
+          runState: finalRunState,
+          errorMessage: finalErrorMessage,
         })
-
-        const runConfig = createRunConfig({
-          logger,
-          agent: resolvedAgent,
-          prompt: effectivePrompt,
-          content: messageContent,
-          previousRunState: previousRunStateRef.current,
-          abortController,
-          agentDefinitions,
-          eventHandlerState,
-          setIsRetrying,
-          setStreamStatus,
-        })
-
-        const runState = await client.run(runConfig)
-
-        // Finalize: persist state and mark complete
-        previousRunStateRef.current = runState
-        setRunState(runState)
-        setIsRetrying(false)
-
-        setMessages((currentMessages) => {
-          saveChatState(runState, currentMessages)
-          return currentMessages
-        })
-        handleRunCompletion({
-          runState,
-          actualCredits,
-          agentMode,
-          timerController,
-          updater,
-          aiMessageId,
-          streamRefs,
-          setStreamStatus,
-          setCanProcessQueue,
-          updateChainInProgress,
-          setHasReceivedPlanResponse,
-          resumeQueue,
-          queryClient,
-        })
-      } catch (error) {
-        handleRunError({
-          error,
-          aiMessageId,
-          timerController,
-          updater,
-          setIsRetrying,
-          setStreamStatus,
-          setCanProcessQueue,
-          updateChainInProgress,
-          queryClient,
-        })
-      } finally {
-        // Ensure the batched updater's flush interval is always cleaned up,
-        // even if handleRunCompletion or handleRunError throw unexpectedly.
-        // dispose() is safe to call multiple times.
-        updater.dispose()
       }
     },
     [

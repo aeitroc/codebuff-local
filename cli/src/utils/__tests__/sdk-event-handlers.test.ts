@@ -20,6 +20,8 @@ const createStreamRefs = (): {
     rootStreamSeen: boolean
     planExtracted: boolean
     wasAbortedByUser: boolean
+    wasAbortedByWatchdog: boolean
+    lastEventAt: number
     spawnAgentsMap: Map<string, any>
   }
 } => {
@@ -29,6 +31,8 @@ const createStreamRefs = (): {
     rootStreamSeen: false,
     planExtracted: false,
     wasAbortedByUser: false,
+    wasAbortedByWatchdog: false,
+    lastEventAt: 0,
     spawnAgentsMap: new Map<string, any>(),
   }
 
@@ -56,6 +60,12 @@ const createStreamRefs = (): {
       },
       setWasAbortedByUser: (value: boolean) => {
         state.wasAbortedByUser = value
+      },
+      setWasAbortedByWatchdog: (value: boolean) => {
+        state.wasAbortedByWatchdog = value
+      },
+      setLastEventAt: (value: number) => {
+        state.lastEventAt = value
       },
       setSpawnAgentInfo: (agentId: string, info: any) => {
         state.spawnAgentsMap.set(agentId, info)

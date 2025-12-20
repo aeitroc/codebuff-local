@@ -9,22 +9,30 @@ export type AskUserRequest = {
 type Listener = (request: AskUserRequest | null) => void
 
 let pendingRequest: AskUserRequest | null = null
+const requestQueue: AskUserRequest[] = []
 const listeners: Listener[] = []
 
 export const AskUserBridge = {
   request: (toolCallId: string, questions: AskUserQuestion[]) => {
     return new Promise((resolve) => {
-      pendingRequest = { toolCallId, questions, resolve }
+      const request = { toolCallId, questions, resolve }
+      if (pendingRequest) {
+        requestQueue.push(request)
+        return
+      }
+      pendingRequest = request
       notifyListeners()
     })
   },
 
   submit: (response: any) => {
-    if (pendingRequest) {
-      pendingRequest.resolve(response)
-      pendingRequest = null
-      notifyListeners()
+    if (!pendingRequest) {
+      return
     }
+
+    pendingRequest.resolve(response)
+    pendingRequest = requestQueue.shift() ?? null
+    notifyListeners()
   },
 
   getPendingRequest: () => pendingRequest,

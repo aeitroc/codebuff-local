@@ -181,6 +181,7 @@ describe('command factory pattern', () => {
         'image',
         'publish',
         'new',
+        'speckit',
         'mode:default',
         'mode:max',
         'mode:plan',

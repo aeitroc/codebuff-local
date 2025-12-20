@@ -1,0 +1,260 @@
+openapi: 3.1.0
+info:
+  title: Speckit Workflow Service
+  version: 1.0.0
+  description: Contract for starting and managing Speckit workflow sessions.
+servers:
+  - url: https://local.cli
+paths:
+  /speckit/sessions:
+    post:
+      summary: Start a Speckit workflow session
+      operationId: startSpeckitSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartSpeckitRequest'
+      responses:
+        '201':
+          description: Session started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StartSpeckitResponse'
+        '400':
+          description: Invalid request
+  /speckit/sessions/{sessionId}:
+    get:
+      summary: Get Speckit session status
+      operationId: getSpeckitSession
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Session status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpeckitSession'
+        '404':
+          description: Session not found
+  /speckit/sessions/{sessionId}/clarifications:
+    post:
+      summary: Submit clarification answers
+      operationId: submitClarifications
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitClarificationsRequest'
+      responses:
+        '200':
+          description: Clarifications accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StartSpeckitResponse'
+        '400':
+          description: Invalid clarification payload
+  /speckit/sessions/{sessionId}/cancel:
+    post:
+      summary: Cancel a Speckit session
+      operationId: cancelSpeckitSession
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelSpeckitRequest'
+      responses:
+        '200':
+          description: Session cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpeckitSession'
+  /speckit/sessions/{sessionId}/artifacts:
+    get:
+      summary: List artifacts produced by a session
+      operationId: listArtifacts
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Artifacts for the session
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SpeckitArtifact'
+  /speckit/sessions/{sessionId}/summary:
+    get:
+      summary: Fetch CLI summary for the session
+      operationId: getSpeckitSummary
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Summary content
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpeckitSummary'
+
+components:
+  schemas:
+    StartSpeckitRequest:
+      type: object
+      required:
+        - featureDescription
+      properties:
+        featureDescription:
+          type: string
+          description: User-provided feature description
+    StartSpeckitResponse:
+      type: object
+      required:
+        - sessionId
+        - status
+      properties:
+        sessionId:
+          type: string
+        status:
+          type: string
+          enum:
+            - running
+            - waiting_for_clarification
+            - completed
+            - failed
+        summaryPath:
+          type: string
+          description: Location of the CLI summary artifact
+    SubmitClarificationsRequest:
+      type: object
+      required:
+        - sessionId
+        - answers
+      properties:
+        sessionId:
+          type: string
+        answers:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClarificationAnswer'
+    CancelSpeckitRequest:
+      type: object
+      required:
+        - sessionId
+      properties:
+        sessionId:
+          type: string
+        reason:
+          type: string
+    SpeckitSession:
+      type: object
+      required:
+        - id
+        - featureDescription
+        - status
+        - startedAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+        featureDescription:
+          type: string
+        status:
+          type: string
+          enum:
+            - running
+            - waiting_for_clarification
+            - completed
+            - cancelled
+            - failed
+        startedAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    SpeckitArtifact:
+      type: object
+      required:
+        - id
+        - sessionId
+        - artifactType
+        - filePath
+        - createdAt
+      properties:
+        id:
+          type: string
+        sessionId:
+          type: string
+        artifactType:
+          type: string
+          enum:
+            - spec
+            - clarify
+            - plan
+            - tasks
+            - implementation
+            - review
+            - summary
+        filePath:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    ClarificationAnswer:
+      type: object
+      required:
+        - questionId
+        - answerText
+      properties:
+        questionId:
+          type: string
+        answerText:
+          type: string
+    SpeckitSummary:
+      type: object
+      required:
+        - sessionId
+        - status
+        - artifacts
+      properties:
+        sessionId:
+          type: string
+        status:
+          type: string
+        artifacts:
+          type: array
+          items:
+            $ref: '#/components/schemas/SpeckitArtifact'

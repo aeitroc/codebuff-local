@@ -73,6 +73,7 @@ describe('router-utils', () => {
       expect(parseCommand('/help')).toBe('help')
       expect(parseCommand('/logout')).toBe('logout')
       expect(parseCommand('/usage')).toBe('usage')
+      expect(parseCommand('/speckit')).toBe('speckit')
     })
 
     test('returns empty string for unslashed input (not a slash command)', () => {
@@ -150,6 +151,7 @@ describe('router-utils', () => {
       'init',
       'bash',
       'feedback',
+      'speckit',
     ]
 
     for (const cmd of slashCommands) {
@@ -240,6 +242,10 @@ describe('command-registry', () => {
       const signin = findCommand('signin')
       expect(signin).toBeDefined()
       expect(signin?.name).toBe('login')
+
+      const feature = findCommand('feature')
+      expect(feature).toBeDefined()
+      expect(feature?.name).toBe('speckit')
     })
 
     test('returns undefined for unknown command', () => {

@@ -3,6 +3,7 @@
 import { spawnSync, type SpawnSyncOptions } from 'child_process'
 import {
   chmodSync,
+  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -110,6 +111,53 @@ function getTargetInfo(): TargetInfo {
   return target
 }
 
+function getRipgrepPlatformDir(targetInfo: TargetInfo): string {
+  if (targetInfo.platform === 'win32' && targetInfo.arch === 'x64') {
+    return 'x64-win32'
+  }
+  if (targetInfo.platform === 'darwin' && targetInfo.arch === 'arm64') {
+    return 'arm64-darwin'
+  }
+  if (targetInfo.platform === 'darwin' && targetInfo.arch === 'x64') {
+    return 'x64-darwin'
+  }
+  if (targetInfo.platform === 'linux' && targetInfo.arch === 'arm64') {
+    return 'arm64-linux'
+  }
+  if (targetInfo.platform === 'linux' && targetInfo.arch === 'x64') {
+    return 'x64-linux'
+  }
+  throw new Error(`Unsupported ripgrep platform: ${targetInfo.platform}-${targetInfo.arch}`)
+}
+
+function copyRipgrepBinary(targetInfo: TargetInfo, binDir: string): void {
+  const platformDir = getRipgrepPlatformDir(targetInfo)
+  const rgFileName = targetInfo.platform === 'win32' ? 'rg.exe' : 'rg'
+  const rgSource = join(
+    repoRoot,
+    'sdk',
+    'dist',
+    'vendor',
+    'ripgrep',
+    platformDir,
+    rgFileName,
+  )
+
+  if (!existsSync(rgSource)) {
+    logAlways(`Ripgrep binary not found at ${rgSource}; skipping copy`)
+    return
+  }
+
+  const rgDest = join(binDir, rgFileName)
+  copyFileSync(rgSource, rgDest)
+
+  if (targetInfo.platform !== 'win32') {
+    chmodSync(rgDest, 0o755)
+  }
+
+  logAlways(`Copied ripgrep binary to ${rgDest}`)
+}
+
 async function main() {
   const [, , binaryNameArg, version] = process.argv
   const binaryName = binaryNameArg ?? 'codecane'
@@ -212,6 +260,8 @@ async function main() {
   if (targetInfo.platform !== 'win32') {
     chmodSync(outputFile, 0o755)
   }
+
+  copyRipgrepBinary(targetInfo, binDir)
 
   const binary = readFileSync(outputFile)
   if (

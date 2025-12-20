@@ -3,6 +3,7 @@ import { handleInitializationFlowLocally } from './init'
 import { handleReferralCode } from './referral'
 import { runBashCommand } from './router'
 import { normalizeReferralCode } from './router-utils'
+import { handleSpeckitCommand } from './speckit'
 import { handleUsageCommand } from './usage'
 import { useChatStore } from '../state/chat-store'
 import { useFeedbackStore } from '../state/feedback-store'
@@ -331,6 +332,11 @@ export const COMMAND_REGISTRY: CommandDefinition[] = [
         params.scrollToLatest()
       }, 0)
     },
+  }),
+  defineCommandWithArgs({
+    name: 'speckit',
+    aliases: ['implement', 'feature'],
+    handler: handleSpeckitCommand,
   }),
   defineCommand({
     name: 'usage',

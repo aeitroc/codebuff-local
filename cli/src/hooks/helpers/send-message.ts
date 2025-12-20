@@ -141,6 +141,8 @@ export const setupStreamingContext = (params: {
   } = params
 
   streamRefs.reset()
+  streamRefs.setters.setLastEventAt(Date.now())
+  streamRefs.setters.setWasAbortedByWatchdog(false)
   timerController.start(aiMessageId)
   const updater = createBatchedMessageUpdater(aiMessageId, setMessages)
   const hasReceivedContentRef = { current: false }
@@ -148,16 +150,21 @@ export const setupStreamingContext = (params: {
   abortControllerRef.current = abortController
 
   abortController.signal.addEventListener('abort', () => {
+    const wasWatchdogAbort = streamRefs.state.wasAbortedByWatchdog
     // Abort means the user stopped streaming; finalize with an interruption notice.
-    streamRefs.setters.setWasAbortedByUser(true)
+    if (!wasWatchdogAbort) {
+      streamRefs.setters.setWasAbortedByUser(true)
+    }
     setStreamStatus('idle')
     setCanProcessQueue(!isQueuePausedRef?.current)
     updateChainInProgress(false)
     setIsRetrying(false)
-    timerController.stop('aborted')
+    timerController.stop(wasWatchdogAbort ? 'error' : 'aborted')
 
-    updater.updateAiMessageBlocks((blocks) => appendInterruptionNotice(blocks))
-    updater.markComplete()
+    if (!wasWatchdogAbort) {
+      updater.updateAiMessageBlocks((blocks) => appendInterruptionNotice(blocks))
+      updater.markComplete()
+    }
   })
 
   return { updater, hasReceivedContentRef, abortController }

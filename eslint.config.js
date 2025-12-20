@@ -9,9 +9,12 @@ export default tseslint.config(
   {
     ignores: [
       '**/dist/*',
+      '**/build/*',
+      '**/coverage/*',
       '**/.next/*',
       '**/.contentlayer/*',
       '**/node_modules/*',
+      '**/*.min.js',
     ],
   },
 

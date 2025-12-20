@@ -237,6 +237,7 @@ export async function routeUserPrompt(
   const pendingImages = useChatStore.getState().pendingImages
 
   const trimmed = inputValue.trim()
+  const isCommand = isSlashCommand(trimmed)
   // Allow empty messages if there are pending images attached
   if (!trimmed && pendingImages.length === 0) return
 
@@ -347,7 +348,7 @@ export async function routeUserPrompt(
   }
 
   // Only process slash commands if input starts with '/'
-  if (isSlashCommand(trimmed)) {
+  if (isCommand) {
     const cmd = parseCommand(trimmed)
     const args = trimmed.slice(1 + cmd.length).trim()
 
@@ -388,7 +389,7 @@ export async function routeUserPrompt(
   }
 
   // Unknown slash command - show error
-  if (isSlashCommand(trimmed)) {
+  if (isCommand) {
     setMessages((prev) => [
       ...prev,
       getUserMessage(trimmed),

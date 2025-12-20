@@ -420,6 +420,7 @@ const handleFinish = (state: EventHandlerState, event: PrintModeFinish) => {
 
 export const createStreamChunkHandler =
   (state: EventHandlerState) => (event: StreamChunkEvent) => {
+    state.streaming.streamRefs.setters.setLastEventAt(Date.now())
     const destination = destinationFromChunkEvent(event)
     let text: string | undefined
     if (typeof event === 'string') {
@@ -455,6 +456,7 @@ export const createStreamChunkHandler =
 
 export const createEventHandler =
   (state: EventHandlerState) => (event: SDKEvent) => {
+    state.streaming.streamRefs.setters.setLastEventAt(Date.now())
     return match(event)
       .with({ type: 'subagent_start' }, (e) => handleSubagentStart(state, e))
       .with({ type: 'subagent_finish' }, (e) => handleSubagentFinish(state, e))

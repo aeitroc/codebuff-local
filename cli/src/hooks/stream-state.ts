@@ -7,6 +7,8 @@ type StreamState = {
   rootStreamSeen: boolean
   planExtracted: boolean
   wasAbortedByUser: boolean
+  wasAbortedByWatchdog: boolean
+  lastEventAt: number
   spawnAgentsMap: Map<string, SpawnAgentInfo>
 }
 
@@ -21,6 +23,8 @@ export type StreamController = {
     setRootStreamSeen: (value: boolean) => void
     setPlanExtracted: (value: boolean) => void
     setWasAbortedByUser: (value: boolean) => void
+    setWasAbortedByWatchdog: (value: boolean) => void
+    setLastEventAt: (value: number) => void
     setSpawnAgentInfo: (agentId: string, info: SpawnAgentInfo) => void
     removeSpawnAgentInfo: (agentId: string) => void
   }
@@ -37,6 +41,8 @@ export const createStreamController = (): StreamController => {
     rootStreamSeen: false,
     planExtracted: false,
     wasAbortedByUser: false,
+    wasAbortedByWatchdog: false,
+    lastEventAt: 0,
     spawnAgentsMap: new Map(),
   }
 
@@ -46,6 +52,8 @@ export const createStreamController = (): StreamController => {
     state.rootStreamSeen = false
     state.planExtracted = false
     state.wasAbortedByUser = false
+    state.wasAbortedByWatchdog = false
+    state.lastEventAt = 0
     state.spawnAgentsMap = new Map()
   }
 
@@ -70,6 +78,12 @@ export const createStreamController = (): StreamController => {
     },
     setWasAbortedByUser: (value: boolean) => {
       state.wasAbortedByUser = value
+    },
+    setWasAbortedByWatchdog: (value: boolean) => {
+      state.wasAbortedByWatchdog = value
+    },
+    setLastEventAt: (value: number) => {
+      state.lastEventAt = value
     },
     setSpawnAgentInfo: (agentId: string, info: SpawnAgentInfo) => {
       state.spawnAgentsMap.set(agentId, info)

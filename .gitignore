@@ -13,6 +13,7 @@ tags
 node_modules
 dev
 dist
+build
 dist-env
 tsconfig.tsbuildinfo
 .manicode
@@ -26,6 +27,8 @@ npm-app/src/__tests__/data/
 **.log
 
 debug/
+
+.vscode/
 
 # Nx cache directories
 .nx/cache

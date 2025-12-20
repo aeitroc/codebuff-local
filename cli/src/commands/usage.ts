@@ -21,6 +21,11 @@ export async function handleUsageCommand(): Promise<{
   // the data when the banner becomes visible
   useChatStore.getState().setInputMode('usage')
 
-  const postUserMessage: PostUserMessageFn = (prev) => prev
+  const postUserMessage: PostUserMessageFn = (prev) => [
+    ...prev,
+    getSystemMessage(
+      'Tip: Run /speckit <feature description> to start the Speckit workflow.',
+    ),
+  ]
   return { postUserMessage }
 }

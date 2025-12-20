@@ -1,5 +1,4 @@
 import { API_KEY_ENV_VAR } from '@codebuff/common/old-constants'
-import { AskUserBridge } from '@codebuff/common/utils/ask-user-bridge'
 import { CodebuffClient } from '@codebuff/sdk'
 
 import { getAuthTokenDetails } from './auth'
@@ -78,13 +77,30 @@ export async function getCodebuffClient(): Promise<CodebuffClient | null> {
         agentDefinitions,
         overrideTools: {
           ask_user: async (input: ClientToolCall<'ask_user'>['input']) => {
-            const response = (await AskUserBridge.request(
-              'cli-override',
-              input.questions,
-            )) as {
-              answers?: Array<{ questionIndex: number; selectedOption: string }>
-              skipped?: boolean
-            }
+            const answers = input.questions.map((question, questionIndex) => {
+              const recommended = question.options.filter((option) =>
+                `${option.label} ${option.description ?? ''}`
+                  .toLowerCase()
+                  .includes('recommended'),
+              )
+              const fallback = question.options[0]?.label
+
+              if (question.multiSelect) {
+                const selectedOptions =
+                  recommended.length > 0
+                    ? recommended.map((option) => option.label)
+                    : fallback
+                      ? [fallback]
+                      : []
+                return { questionIndex, selectedOptions }
+              }
+
+              const selectedOption =
+                recommended[0]?.label ?? fallback ?? ''
+              return { questionIndex, selectedOption }
+            })
+
+            const response = { answers }
             return [
               {
                 type: 'json',

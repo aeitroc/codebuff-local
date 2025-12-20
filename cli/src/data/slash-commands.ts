@@ -27,6 +27,12 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     description: 'Create a starter knowledge.md file',
   },
   {
+    id: 'speckit',
+    label: 'speckit',
+    description: 'Run the Speckit workflow for a feature',
+    aliases: ['implement', 'feature'],
+  },
+  {
     id: 'logout',
     label: 'logout',
     description: 'Sign out of your session',
